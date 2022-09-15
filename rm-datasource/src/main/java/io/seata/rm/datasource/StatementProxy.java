@@ -61,6 +61,16 @@ public class StatementProxy<T extends Statement> extends AbstractStatementProxy<
 
     @Override
     public ResultSet executeQuery(String sql) throws SQLException {
+        // 我们知道, AT 模式对业务是无侵入的, 而它之所以能做到这种效果, 就是通过代理数据源, 在 SQL 执行结束但还没有提交的时候,
+        // 它会分析 SQL 的执行效果, 获取到它会使用到哪些行, 然后将这些使用到的行主键作为 key, 向 TC 申请全局写锁,
+        // 如果成功获得了锁, 才进行提交, 否则回滚。看起来好像很简单, 但是实际做起来还是挺难的, 有几个现实的问题:
+        // 怎么觉察到这个 SQL 执行在全局事务中? 所有 SQL 操作都需要嵌入 Seata 的逻辑么?
+        // 怎么知道该 SQL 都需要修改哪些行的? 当全局事务回滚时, 它又是怎么恢复回去的呢 ?
+        // 带着这些问题, 我们从 DataSourceProxy 开始, 一窥 AT 模式的实现内核。熟悉 DataSource 接口的同学可能知道,
+        // 实际上 SQL 的执行并不在该接口中, 在 DataSource 中我们能得到数据库 Connection,
+        // 而在 Connection 我们又能得到 Statement, 而这个 Statement 接口才是真正执行 SQL 的地方。
+        // 所以, 我就不给大家展示这个嵌套的调用过程了, 我们直接进去看 Seata 如何实现 Statement 接口,
+        // 毕竟这里才是 SQL 执行的核心。
         this.targetSQL = sql;
         return ExecuteTemplate.execute(this, (statement, args) -> statement.executeQuery((String) args[0]), sql);
     }
